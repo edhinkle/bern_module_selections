@@ -8,14 +8,16 @@
 
 flow:
   source: events
-  stages: [proton_sel]
+  stages: ['proton_sel']
+  #[tracklet_merger, proton_sel]
+  #drop: ['charge', 'combined', 'geometry_info', 'lar_info', 'run_info']
 
 resources:
   - !include ../../../ndlar_flow/yamls/module0_flow/resources/RunData.yaml
   - !include ../../../ndlar_flow/yamls/module0_flow/resources/LArData.yaml
   - !include ../../../ndlar_flow/yamls/module0_flow/resources/Geometry.yaml
-  #- !include ../../../ndlar_flow/yamls/module0_flow/resources/ParticleData.yaml
-  #- !include ../../../ndlar_flow/yamls/module0_flow/resources/DisabledChannels.yaml
+  - !include ../../../ndlar_flow/yamls/module0_flow/resources/ParticleData.yaml
+  - !include ../../../ndlar_flow/yamls/module0_flow/resources/DisabledChannels.yaml
 
 events:
   classname: H5FlowDatasetLoopGenerator
@@ -24,6 +26,34 @@ events:
   params:
     chunk_size: 32
 
+tracklet_merger:
+  classname: TrackletMerger
+  path: module0_flow.reco.combined.tracklet_merging
+  requires:
+   - 'combined/tracklets'
+   - name: 'combined/track_hits'
+     path: ['combined/tracklets', 'charge/hits']
+   - name: 'combined/track_hit_charge'
+     path: ['combined/tracklets', 'charge/hits']   
+   - name: 'combined/track_hit_drift'
+     path: ['combined/tracklets', 'charge/hits', 'combined/hit_drift']
+  params:
+    # inputs
+    hits_dset_name: 'charge/hits'
+    track_charge_dset_name: 'combined/track_hit_charge'
+    track_hits_dset_name: 'combined/track_hits'
+    track_hit_drift_dset_name: 'combined/track_hit_drift'
+    tracks_dset_name: 'combined/tracklets'
+
+    # output
+    merged_dset_name: 'combined/tracklets/merged'
+
+    # configuration parameters
+    pdf_filename: '../../../ndlar_flow/data/module0_flow/joint_pdf-3_0_0.npz'
+    # download link: https://portal.nersc.gov/project/dune/data/Module0/merged/reco_data/joint_pdf-3_0_0.npz
+    pvalue_cut: 0.02
+    max_neighbors: 5
+
 proton_sel:
   classname: ProtonSelection # proton_selection.py
   path: proton_selection
@@ -31,17 +61,27 @@ proton_sel:
     - 'combined/tracklets'
     - 'combined/t0'
     - 'charge/hits'
+    - name: 'combined/hit_drift'
+      path: ['charge/hits', 'combined/hit_drift']
+    #- name: 'combined/track_hits'
+    #  path: ['combined/tracklets', 'charge/hits']
+    #- name: 'combined/track_hit_drift'
+    #  path: ['combined/tracklets', 'charge/hits', 'combined/hit_drift']
+
   params:
     # inputs
     hits_dset_name: 'charge/hits'
     ext_trigs_dset_name: 'charge/ext_trigs'
     t0_dset_name: 'combined/t0'
     tracklet_dset_name: 'combined/tracklets'
+    hit_drift_dset_name: 'combined/hit_drift'
+    #track_hits_dset_name: 'combined/track_hits'
+    #track_hit_drift_dset_name: 'combined/track_hit_drift'
 
     # configuration parameters
-    fid_cut: 22 # mm
-    cathode_fid_cut: 22 # mm
-    profile_dx: 22 # mm
+    fid_cut: 20 # mm
+    cathode_fid_cut: 20 # mm
+    profile_dx: 20 # mm
     larpix_gain:
       mc: 250 # e/mV
       medm: 221 # e/mV
