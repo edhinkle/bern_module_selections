@@ -8,8 +8,7 @@
 
 flow:
   source: events
-  stages: ['proton_sel']
-  #[tracklet_merger, proton_sel]
+  stages: [tracklet_merger, proton_sel]
   #drop: ['charge', 'combined', 'geometry_info', 'lar_info', 'run_info']
 
 resources:
@@ -58,11 +57,13 @@ proton_sel:
   classname: ProtonSelection # proton_selection.py
   path: proton_selection
   requires:
-    - 'combined/tracklets'
+    - 'combined/tracklets/merged'
     - 'combined/t0'
     - 'charge/hits'
     - name: 'combined/hit_drift'
       path: ['charge/hits', 'combined/hit_drift']
+    - name: 'mc_truth/trajectories'
+      path: ['charge/raw_events', 'mc_truth/events', 'mc_truth/trajectories']
     #- name: 'combined/track_hits'
     #  path: ['combined/tracklets', 'charge/hits']
     #- name: 'combined/track_hit_drift'
@@ -73,8 +74,9 @@ proton_sel:
     hits_dset_name: 'charge/hits'
     ext_trigs_dset_name: 'charge/ext_trigs'
     t0_dset_name: 'combined/t0'
-    tracklet_dset_name: 'combined/tracklets'
+    tracklet_dset_name: 'combined/tracklets/merged'
     hit_drift_dset_name: 'combined/hit_drift'
+    truth_trajectories_dset_name: 'mc_truth/trajectories'
     #track_hits_dset_name: 'combined/track_hits'
     #track_hit_drift_dset_name: 'combined/track_hit_drift'
 

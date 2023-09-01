@@ -51,18 +51,22 @@ class ProtonSelection(H5FlowStage):
 
         hits_dset_name='charge/hits', # '/data' directory may not be necessary ... unclear
         hit_drift_dset_name='combined/hit_drift', # TO DO: Calibrate for electron lifetime
-        tracklet_dset_name='combined/tracklets',#/merged', # no merged part?
+        tracklet_dset_name='combined/tracklets/merged', # no merged part?
         t0_dset_name='combined/t0', # 
         ext_trigs_dset_name='charge/ext_trigs',
+        truth_trajectories_dset_name='mc_truth/trajectories',
         #track_hits_dset_name='combined/track_hits',
         #track_hit_drift_dset_name='combined/track_hit_drift',
         path='high_purity_sel/protons') # path within hdf5 file vs. file path
 
     sel_dset_name = 'sel_reco'
+    sel_truth_dset_name = 'sel_truth'
     #event_tracks_dset_name = 'event_tracks_reco'
     #event_hits_dset_name = 'event_hits_reco'
 
     sel_dtype = np.dtype([('sel', 'u1'), 
+                          ('proton', 'f8'),
+                          ('pdg_id', 'f8',(1000,)),
                           ('event_id', 'f8'),
                           ('ntracks', 'f8'),
                           ('max_dqdx', 'f4'),                                
@@ -87,13 +91,13 @@ class ProtonSelection(H5FlowStage):
     def init(self, source_name):
         super(ProtonSelection, self).init(source_name)
         
-        #self.is_mc = resources['RunData'].is_mc
+        self.is_mc = resources['RunData'].is_mc
         correction_key = ('medm')
-        #correction_key = ('mc' if self.is_mc
-        #                  else 'medm')
-        #correction_key = ('high' if (not self.is_mc
-       #                             and resources['RunData'].charge_thresholds == 'high')
-         #                 else correction_key)
+        correction_key = ('mc' if self.is_mc
+                          else 'medm')
+        correction_key = ('high' if (not self.is_mc
+                                    and resources['RunData'].charge_thresholds == 'high')
+                          else correction_key)
         self.curvature_rr_correction = self.curvature_rr_correction.get(correction_key, self.default_params['curvature_rr_correction'])
         self.density_dx_correction_params = self.density_dx_correction_params.get(correction_key, self.default_params['density_dx_correction_params'])
         self.larpix_gain = self.larpix_gain.get(correction_key, self.default_params['larpix_gain'])
@@ -113,9 +117,9 @@ class ProtonSelection(H5FlowStage):
         #self.data_manager.create_dset(f'{self.path}/{self.hit_profile_dset_name}',
         #                              self.hit_profile_dtype)
         #self.data_manager.create_ref(f'{self.path}/{self.hit_profile_dset_name}', self.hits_dset_name)
-        #if self.is_mc:
-        #    self.data_manager.create_dset(f'{self.path}/{self.event_sel_truth_dset_name}',
-        #                                  self.event_sel_dtype)
+        if self.is_mc:
+            self.data_manager.create_dset(f'{self.path}/{self.sel_truth_dset_name}',
+                                          self.sel_dtype)
 
         self.create_dqdx_profile_templates()
         self.data_manager.set_attrs(self.path,
@@ -164,18 +168,16 @@ class ProtonSelection(H5FlowStage):
             sel_events = self.data_manager.get_dset(sel_dset_name)[sel_events_mask]['event_id']
             print("Sample events:", sel_events)
 
-            #if self.is_mc:
-            #    sel_truth_dset_name = f'{self.path}/{self.event_sel_truth_dset_name}'
-            #    true_stopping = np.sum(self.data_manager.get_dset(sel_truth_dset_name)['stop'])
-            #    true_stopping_muon = np.sum(self.data_manager.get_dset(sel_truth_dset_name)['sel'])
-            #    print(f'True stopping: {true_stopping} / {total} ({true_stopping/total:0.03f})')
-            #    print(f'True stopping muons: {true_stopping_muon} / {total} ({true_stopping_muon/total:0.03f})')
-
-            #    correct = np.sum(self.data_manager.get_dset(sel_truth_dset_name)['sel'] &
-            #                     self.data_manager.get_dset(sel_dset_name)['sel'])
-
-            #    print(f'Purity: {correct} / {nselected} ({correct/nselected:0.03f})')
-            #    print(f'Efficiency: {correct} / {true_stopping_muon} ({correct/true_stopping_muon:0.03f})')
+            if self.is_mc:
+                sel_truth_dset_name = f'{self.path}/{self.sel_truth_dset_name}'
+                true_proton = np.sum(self.data_manager.get_dset(sel_truth_dset_name)['proton'])
+                true_contained_proton = np.sum(self.data_manager.get_dset(sel_truth_dset_name)['sel'])
+                print(f'True protons: {true_proton} / {total} ({true_proton/total:0.03f})')
+                print(f'True contained protons: {true_contained_proton} / {total} ({true_contained_proton/total:0.03f})')
+                correct = np.sum(self.data_manager.get_dset(sel_truth_dset_name)['sel'] &
+                                 self.data_manager.get_dset(sel_dset_name)['sel'])
+                print(f'Purity: {correct} / {nselected} ({correct/nselected:0.03f})')
+                print(f'Efficiency: {correct} / {true_contained_proton} ({correct/true_contained_proton:0.03f})')
 ############ START OF CODE PORTED FROM STOPPING MUON CODE FOR PID
 
 
@@ -808,6 +810,50 @@ class ProtonSelection(H5FlowStage):
             #print("Channel ID:", hits['channelid'])
             #print("Shape of hits with channels:", hits_with_channels.shape)
 
+
+            if self.is_mc:
+                # lookup the track's true trajectory
+                track_traj = cache[self.truth_trajectories_dset_name]
+                #print("True Trajectory PID situation:", track_traj['pdgId'])
+
+                if track_traj.shape[0]:
+                    #print("track ids pre-reshaping:", track_traj['trackID'])
+                    track_traj = track_traj.reshape(tracks.shape[0:1] + (-1,))
+                    track_traj = condense_array(track_traj, track_traj['trackID'].mask)
+                    track_pdg = condense_array(track_traj, track_traj['pdgId'].mask)
+                    
+                    #print("track ids post-reshaping:", track_traj['trackID'])
+                    #print("pdg ids post-reshaping:", track_pdg['pdgId'])
+                    proton_mask = track_pdg['pdgId'] == 2212
+                    #print("Proton mask:", proton_mask)
+                    proton_trajectories =  ma.masked_where(~proton_mask, track_traj['trackID'])
+                    #print("Proton trajectories:", proton_trajectories)
+                    i_primary_traj = np.argmin(proton_trajectories, axis=-1)
+                    track_true_traj = np.take_along_axis(track_traj, i_primary_traj[..., np.newaxis], axis=-1)
+                    track_true_traj = track_true_traj.reshape(-1)
+                    true_xyz_start = track_true_traj['xyz_start'] 
+                    true_xyz_end = track_true_traj['xyz_end']
+
+                    # find if trajectory ends in the fiducial volume
+                    is_muon = ma.abs(track_true_traj['pdgId']) == 1
+                    #print("PDG ID shape:", track_traj['pdgId'].shape)
+                    #is_proton = ma.array([int(((track_traj['pdgId'][i] == 2212).astype(float)).sum(axis=-1))>=1 for i in range(len(track_traj))])
+
+                    is_proton = np.empty(tracks.shape[0], dtype=bool)
+                    for i in range(len(tracks)):
+                        all_pdg = track_traj['pdgId'][i].ravel() == 2212
+                        is_proton[i] = np.sum(all_pdg.astype(int))
+                    #print("What is is_proton?:", is_proton)
+
+                    #if len(is_proton):
+                        #print("True start:", true_xyz_start[is_proton])
+                        #print("True start:", true_xyz_end[is_proton])
+                else:
+                    track_true_traj = np.empty(tracks.shape[0], dtype=track_traj.dtype)
+                    is_muon = np.zeros(track_true_traj.shape, dtype=bool)
+                    is_proton = np.zeros(track_true_traj.shape, dtype=bool)
+                    true_xyz_start = track_true_traj['xyz_start']
+                    true_xyz_end = track_true_traj['xyz_end']
             # define seed point based on 
             start_in_fid = resources['Geometry'].in_fid(
                 track_start, field_cage_fid=self.fid_cut, anode_fid=self.anode_fid_cut)
@@ -1038,6 +1084,18 @@ class ProtonSelection(H5FlowStage):
             
             #print("Max Track length:", max_track_length)
 
+        if self.is_mc and len(is_proton):
+            # define true proton events contained in fid
+            event_is_true_proton = is_proton
+            true_xyz_start_in_fid = resources['Geometry'].in_fid(
+                true_xyz_start, cathode_fid=self.cathode_fid_cut, field_cage_fid=self.fid_cut, anode_fid=self.anode_fid_cut)
+            true_xyz_end_in_fid = resources['Geometry'].in_fid(
+                true_xyz_end, cathode_fid=self.cathode_fid_cut, field_cage_fid=self.fid_cut, anode_fid=self.anode_fid_cut)
+            true_contained = true_xyz_start_in_fid & true_xyz_end_in_fid
+            #true_contained.reshape(len(tracks))
+            print("True contained shape:", true_contained.shape)
+
+
         sel = np.zeros(len(tracks), dtype=self.sel_dtype)
 
         if len(sel):
@@ -1055,6 +1113,17 @@ class ProtonSelection(H5FlowStage):
             #sel['ntracks'] = event_ntracks[event_sel]
             #sel['nhits'] = event_nhits[event_sel]
             #sel['event_charge'] = event_charge[event_sel]
+
+        if self.is_mc:
+            event_true_sel = np.zeros(len(tracks), dtype=self.sel_dtype)
+            if len(event_true_sel):
+                event_true_sel['sel'] = event_is_true_proton & true_contained
+                event_true_sel['proton'] = event_is_true_proton
+                event_true_sel['event_id'] = event_ids
+                event_true_sel['pdg_id'] = np.concatenate((track_traj['pdgId'],np.zeros((len(tracks), 1000-len(track_traj['pdgId'][0])))), axis=-1)
+                #event_true_sel['muon_loglikelihood_mean'] = ma.sum(is_muon, axis=-1) >= 1
+                #event_true_sel['proton_loglikelihood_mean'] = ma.sum(is_proton & is_true_stopping, axis=-1) >= 1
+                #event_true_sel['mip_loglikelihood_mean'] = ma.sum(is_muon & ~is_true_stopping, axis=-1) >= 1
 #
         #event_tracks = np.zeros(len(track_length), dtype=self.event_tracks_dtype)
 
@@ -1079,11 +1148,18 @@ class ProtonSelection(H5FlowStage):
             #    f'{self.path}/{self.event_tracks_dset_name}', source_slice)
             #event_hits_slice = self.data_manager.reserve_data(
             #    f'{self.path}/{self.hit_profile_dset_name}', int((~hits['id'].mask).sum()))
-
+            if self.is_mc:
+                sel_truth_slice = self.data_manager.reserve_data(
+                    f'{self.path}/{self.sel_truth_dset_name}',
+                    source_slice)
 
             # write
             self.data_manager.write_data(f'{self.path}/{self.sel_dset_name}',
                                          sel_slice, sel)
+            if self.is_mc:
+                self.data_manager.write_data(
+                    f'{self.path}/{self.sel_truth_dset_name}',
+                    sel_truth_slice, event_true_sel)
             #self.data_manager.write_data(f'{self.path}/{self.event_tracks_dset_name}',
             #                             event_tracks_slice, event_tracks)
             #self.data_manager.write_data(f'{self.path}/{self.hit_profile_dset_name}',

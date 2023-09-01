@@ -32,4 +32,10 @@ print('PID score muon proton:',data_h5['high_purity_sel']['protons']['sel_reco']
 print('PID score mip proton:',data_h5['high_purity_sel']['protons']['sel_reco']['data'][event_mask]['pid_mip_proton'],'\n')
 print('PID muon proton', data_h5['high_purity_sel']['protons']['sel_reco']['data'][pid_muon_mask]['pid_muon_proton'],'\n')
 print('PID mip proton', data_h5['high_purity_sel']['protons']['sel_reco']['data'][pid_mip_mask]['pid_mip_proton'],'\n')
-
+if len(data_h5['high_purity_sel']['protons']['sel_truth']['data']['proton']):
+    proton_mask = (data_h5['high_purity_sel']['protons']['sel_truth']['data']['proton'] == True)
+    print('Proton events:', data_h5['high_purity_sel']['protons']['sel_truth']['data'][proton_mask]['event_id'])
+    for event in data_h5['high_purity_sel']['protons']['sel_reco']['data'][sel_mask]['event_id']:
+        event_sel_mask = data_h5['high_purity_sel']['protons']['sel_truth']['data']['event_id'] == event
+        zero_mask = data_h5['high_purity_sel']['protons']['sel_truth']['data'][event_sel_mask]['pdg_id'] != 0.
+        print('Selected event true PID:', data_h5['high_purity_sel']['protons']['sel_truth']['data'][event_sel_mask]['pdg_id'][zero_mask], "| Event ID:", event)

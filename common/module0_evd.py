@@ -40,7 +40,8 @@ class EventDisplay:
 
     module0_flow_flag = False
 
-    def __init__(self, filename, geometry_file=None, nhits=1):
+    def __init__(self, filename, geometry_file=None, nhits=1, is_mc=False):
+        self.is_mc = is_mc
         f = h5py.File(filename, 'r')
 
         try:
@@ -521,8 +522,11 @@ class EventDisplay:
                 norm(unassoc_hits['q'])), s=5, alpha=0.75)
             self.ax_zy.scatter(hitz, unassoc_hits['py'], lw=0.2, ec='C0', c=my_cmap(
                 norm(unassoc_hits['q'])), s=5, alpha=0.75)
-            
-        plt.savefig('test_evd_'+str(ev_id)+'.pdf')
+
+        if self.is_mc:
+            plt.savefig('test_evd_MC_'+str(ev_id)+'.pdf')
+        else:
+            plt.savefig('test_evd_data_'+str(ev_id)+'.pdf')
 
 
 #if __name__ == '__main__':
