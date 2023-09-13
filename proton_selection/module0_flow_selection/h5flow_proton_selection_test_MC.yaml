@@ -8,7 +8,7 @@
 
 flow:
   source: events
-  stages: [el_calib, proton_sel]
+  stages: [proton_sel]
   #drop: ['charge', 'combined', 'geometry_info', 'lar_info', 'run_info']
 
 resources:
@@ -25,33 +25,33 @@ events:
   params:
     chunk_size: 32
 
-# Calibration modules (Time Dep Gain + Electron Lifetime)
-tdg_calib:
-  classname: TimeDependentGain
-  path: module0_flow.reco.charge.time_dependent_gain
-  requires:                                                                          
-    - 'charge/hits'
-  params:
-    hits_dset_name: 'charge/hits'
-    calib_dset_name: 'charge/q_calib_tdg'
-    gain_file: '../../../ndlar_flow/data/module0_flow/module0_time_dependent_gain_v0.npz'
-
-el_calib:
-  classname: ElectronLifetimeCalib
-  path: module0_flow.reco.combined.electron_lifetime
-  requires:
-    - name: 'combined/hit_drift'
-      path: ['charge/hits', 'combined/hit_drift']
-    - 'charge/hits'
-    #- name: 'charge/q_calib_tdg'
-    #  path: ['charge/hits', 'charge/q_calib_tdg']
-  params:
-    hits_dset_name: 'charge/hits'
-    charge_dset_name: 'charge/hits'
-    drift_dset_name: 'combined/hit_drift'
-    calib_dset_name: 'combined/q_calib_el'
-    mode: 'calibration'
-    electron_lifetime_file: '../../../ndlar_flow/data/module0_flow/ElecLifetimeFit_Module1.npz'
+## Calibration modules (Time Dep Gain + Electron Lifetime)
+#tdg_calib:
+#  classname: TimeDependentGain
+#  path: module0_flow.reco.charge.time_dependent_gain
+#  requires:                                                                          
+#    - 'charge/hits'
+#  params:
+#    hits_dset_name: 'charge/hits'
+#    calib_dset_name: 'charge/q_calib_tdg'
+#    gain_file: '../../../ndlar_flow/data/module0_flow/module0_time_dependent_gain.npz'
+#
+#el_calib:
+#  classname: ElectronLifetimeCalib
+#  path: module0_flow.reco.combined.electron_lifetime
+#  requires:
+#    - name: 'combined/hit_drift'
+#      path: ['charge/hits', 'combined/hit_drift']
+#    - 'charge/hits'
+#    - name: 'charge/q_calib_tdg'
+#      path: ['charge/hits', 'charge/q_calib_tdg']
+#  params:
+#    hits_dset_name: 'charge/hits'
+#    charge_dset_name: 'charge/q_calib_tdg'
+#    drift_dset_name: 'combined/hit_drift'
+#    calib_dset_name: 'combined/q_calib_el'
+#    mode: 'calibration'
+#    electron_lifetime_file: '../../../ndlar_flow/data/module0_flow/ElecLifetimeFit_Module1.npz'
 
 # Tracklet merger module
 tracklet_merger:
@@ -90,8 +90,8 @@ proton_sel:
     - 'combined/tracklets'
     - 'combined/t0'
     - 'charge/hits'
-    - name: 'combined/q_calib_el'
-      path: ['charge/hits', 'combined/q_calib_el']
+    #- name: 'combined/q_calib_el'
+    #  path: ['charge/hits', 'combined/q_calib_el']
     - name: 'combined/hit_drift'
       path: ['charge/hits', 'combined/hit_drift']
     - name: 'mc_truth/trajectories'
@@ -109,7 +109,7 @@ proton_sel:
     tracklet_dset_name: 'combined/tracklets'
     hit_drift_dset_name: 'combined/hit_drift'
     truth_trajectories_dset_name: 'mc_truth/trajectories'
-    charge_dset_name: 'combined/q_calib_el'
+    charge_dset_name: 'charge/hits'
 
     # configuration parameters
     fid_cut: 20 # mm

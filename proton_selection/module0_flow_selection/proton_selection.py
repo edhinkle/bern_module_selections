@@ -51,12 +51,11 @@ class ProtonSelection(H5FlowStage):
 
         hits_dset_name='charge/hits', # '/data' directory may not be necessary ... unclear
         hit_drift_dset_name='combined/hit_drift', # TO DO: Calibrate for electron lifetime
-        tracklet_dset_name='combined/tracklets/merged', # no merged part?
+        tracklet_dset_name='combined/tracklets', #/merged', # no merged part?
         t0_dset_name='combined/t0', # 
         ext_trigs_dset_name='charge/ext_trigs',
         truth_trajectories_dset_name='mc_truth/trajectories',
-        #track_hits_dset_name='combined/track_hits',
-        #track_hit_drift_dset_name='combined/track_hit_drift',
+        charge_dset_name = 'combined/q_calib_el',
         path='high_purity_sel/protons') # path within hdf5 file vs. file path
 
     sel_dset_name = 'sel_reco'
@@ -67,6 +66,7 @@ class ProtonSelection(H5FlowStage):
     sel_dtype = np.dtype([('sel', 'u1'), 
                           ('proton', 'f8'),
                           ('pdg_id', 'f8',(1000,)),
+                          ('nhits_over_thresh', 'f8'),
                           ('event_id', 'f8'),
                           ('ntracks', 'f8'),
                           ('max_dqdx', 'f4'),                                
@@ -173,7 +173,7 @@ class ProtonSelection(H5FlowStage):
                 true_proton = np.sum(self.data_manager.get_dset(sel_truth_dset_name)['proton'])
                 true_contained_proton = np.sum(self.data_manager.get_dset(sel_truth_dset_name)['sel'])
                 print(f'True protons: {true_proton} / {total} ({true_proton/total:0.03f})')
-                print(f'True contained protons: {true_contained_proton} / {total} ({true_contained_proton/total:0.03f})')
+                print(f'True contained proton events: {true_contained_proton} / {total} ({true_contained_proton/total:0.03f})')
                 correct = np.sum(self.data_manager.get_dset(sel_truth_dset_name)['sel'] &
                                  self.data_manager.get_dset(sel_dset_name)['sel'])
                 print(f'Purity: {correct} / {nselected} ({correct/nselected:0.03f})')
@@ -703,8 +703,8 @@ class ProtonSelection(H5FlowStage):
         events = cache[source_name]
         t0 = cache[self.t0_dset_name].reshape(cache[source_name].shape)
         hits = ma.array(cache[self.hits_dset_name], shrink=False)
-        q = hits['q']
-        q.reshape(hits.shape)
+        q = ma.array(cache[self.charge_dset_name], shrink=False)
+        q = q.reshape(hits.shape)
         tracks = ma.array(cache[self.tracklet_dset_name], shrink=False)
         hit_drift = ma.array(cache[self.hit_drift_dset_name].reshape(hits.shape), shrink=False)
         #track_hits = ma.array(cache[self.track_hits_dset_name], shrink=False)
@@ -718,7 +718,7 @@ class ProtonSelection(H5FlowStage):
             ## EVENT-LEVEL CALCULATIONS
 
             # calculate hit positions and charge
-            hit_q = self.larpix_gain * q # convert mV -> ke
+            hit_q = self.larpix_gain * q['q'] # convert mV -> ke
             # filter out bad channel ids            
             hit_mask = (hits['px'] != 0.0) & (hits['py'] != 0.0) & ~hit_q.mask & ~hit_drift['t_drift'].mask            
             hit_q.mask = hit_q.mask | ~hit_mask
@@ -726,11 +726,15 @@ class ProtonSelection(H5FlowStage):
                 hits['px'][..., np.newaxis], hits['py'][..., np.newaxis],
                 hit_drift['z'][..., np.newaxis]], axis=-1), shrink=False, mask=np.zeros(hits['px'].shape + (3,), dtype=bool) | hit_q.mask[...,np.newaxis] | ~hit_mask[...,np.newaxis])
             hit_in_fid = resources['Geometry'].in_fid(
-                hit_xyz.reshape(-1, 3), cathode_fid=0, field_cage_fid=0, anode_fid=0).reshape(hit_xyz.shape[:-1])
-            q.mask = q.mask | ~hit_in_fid
+                hit_xyz.reshape(-1, 3), cathode_fid=20, field_cage_fid=20, anode_fid=20).reshape(hit_xyz.shape[:-1])
+            hit_q.mask = hit_q.mask | ~hit_in_fid
 
             # find value for the most charge in one hit in each event
-            max_hit_charge = ma.filled([ma.max(ma.filled(q[i].astype(float), 0.0)) for i in range(len(hits))])
+            #print("HIt q", hit_q[~hit_q.mask]/self.larpix_gain)
+            #print("HIt q", hit_q.shape)
+            max_hit_charge = ma.array([int(ma.filled(hit_q[i,:].astype(float)/self.larpix_gain > 300., False).sum()) for i in range(len(hits))])
+            #print("test max hit charge:", ma.filled(hit_q[0,:].astype(float)/self.larpix_gain > 300., False)== True)
+            #print("NEW MAX HIT CHARGE SHAPE:", max_hit_charge.shape)
             #print("Max Hit Charge:", max_hit_charge)
             ## TRACK-LEVEL CALCULATIONS
 
@@ -786,7 +790,8 @@ class ProtonSelection(H5FlowStage):
                     event_ntracks_in_fid[i] = 0
 
             nhits_cut = (event_nhits > 50) & (event_nhits < 5000) 
-            hit_charge_threshold_cut = (max_hit_charge > 300) 
+            #print("Number of hits:", nhits_cut)
+            hit_charge_threshold_cut = (max_hit_charge > 1) # cut on number of hits over threshold, which is currently 300 mV
             external_trigger_cut = (event_next_trigs > 0)
             ntracks_in_fid_cut = (event_ntracks_in_fid == event_ntracks) & (event_ntracks >= 1) & (event_ntracks <= 3)
             event_level_cuts = nhits_cut & hit_charge_threshold_cut & external_trigger_cut & ntracks_in_fid_cut
@@ -824,18 +829,31 @@ class ProtonSelection(H5FlowStage):
                     
                     #print("track ids post-reshaping:", track_traj['trackID'])
                     #print("pdg ids post-reshaping:", track_pdg['pdgId'])
-                    proton_mask = track_pdg['pdgId'] == 2212
+                    proton_mask_true = track_pdg['pdgId'] == 2212
+                    proton_mask = np.tile(proton_mask_true[..., np.newaxis], (1,1,3))
+
+
                     #print("Proton mask:", proton_mask)
-                    proton_trajectories =  ma.masked_where(~proton_mask, track_traj['trackID'])
+                    true_xyz_start =  ma.masked_where(~proton_mask, track_traj['xyz_start'])
+                    true_xyz_end =  ma.masked_where(~proton_mask, track_traj['xyz_end'])
+
+                    #n_protons = len(track_pdg[proton_mask_true])
+                    #true_xyz_start = true_xyz_start[~true_xyz_start.mask].reshape((n_protons,3))
+                    #true_xyz_end = true_xyz_end[~true_xyz_end.mask].reshape((n_protons,3))
+                    #print("True xyz start:", true_xyz_start)
                     #print("Proton trajectories:", proton_trajectories)
-                    i_primary_traj = np.argmin(proton_trajectories, axis=-1)
-                    track_true_traj = np.take_along_axis(track_traj, i_primary_traj[..., np.newaxis], axis=-1)
-                    track_true_traj = track_true_traj.reshape(-1)
-                    true_xyz_start = track_true_traj['xyz_start'] 
-                    true_xyz_end = track_true_traj['xyz_end']
+                    # Look at all possible proton trajectories
+                    #i_primary_traj = proton_trajectories
+                    #print("Track trajectory shape:", track_traj.shape)
+                    #print("Proton trajectories axis shape:", i_primary_traj.shape)
+                    #track_true_traj = d
+                    #print("Track true trajectories only protons:", track_true_traj)
+                    #track_true_traj = track_true_traj.reshape(-1)
+                    #true_xyz_start = proton_trajectories['xyz_start'] #track_true_traj['xyz_start'] 
+                    #true_xyz_end = proton_trajectories['xyz_end']#track_true_traj['xyz_end']
 
                     # find if trajectory ends in the fiducial volume
-                    is_muon = ma.abs(track_true_traj['pdgId']) == 1
+                    #is_muon = ma.abs(track_true_traj['pdgId']) == 1
                     #print("PDG ID shape:", track_traj['pdgId'].shape)
                     #is_proton = ma.array([int(((track_traj['pdgId'][i] == 2212).astype(float)).sum(axis=-1))>=1 for i in range(len(track_traj))])
 
@@ -1065,6 +1083,7 @@ class ProtonSelection(H5FlowStage):
             #PID score mip/proton  = (2/pi)arctan((loglikelihood mip - loglikelihood proton) / 100) close to 1 = mip, close to -1 = proton
             pid_mip_proton = (np.mean(mip_likelihood_dqdx, axis=-1) - (np.mean(proton_likelihood_dqdx, axis=-1)))
 #
+
             event_sel = (nhits_cut 
                          & hit_charge_threshold_cut 
                          & external_trigger_cut 
@@ -1085,23 +1104,35 @@ class ProtonSelection(H5FlowStage):
             #print("Max Track length:", max_track_length)
 
         if self.is_mc and len(is_proton):
-            # define true proton events contained in fid
+            # define true proton events contained in fid as any event with 
+            # at least one proton contained in fid
             event_is_true_proton = is_proton
-            true_xyz_start_in_fid = resources['Geometry'].in_fid(
-                true_xyz_start, cathode_fid=self.cathode_fid_cut, field_cage_fid=self.fid_cut, anode_fid=self.anode_fid_cut)
-            true_xyz_end_in_fid = resources['Geometry'].in_fid(
-                true_xyz_end, cathode_fid=self.cathode_fid_cut, field_cage_fid=self.fid_cut, anode_fid=self.anode_fid_cut)
-            true_contained = true_xyz_start_in_fid & true_xyz_end_in_fid
+            #print("Shape of is_proton:", is_proton.shape)
+            true_contained = np.full_like(is_proton, False)
+            for i in range(len(true_contained)):
+                true_xyz_start_in_fid = resources['Geometry'].in_fid(
+                    true_xyz_start[i], cathode_fid=self.cathode_fid_cut, field_cage_fid=self.fid_cut, anode_fid=self.anode_fid_cut)
+                true_xyz_end_in_fid = resources['Geometry'].in_fid(
+                    true_xyz_end[i], cathode_fid=self.cathode_fid_cut, field_cage_fid=self.fid_cut, anode_fid=self.anode_fid_cut)
+                contained = true_xyz_start_in_fid & true_xyz_end_in_fid
+                true_contained[i] = bool(np.sum(contained))
+                #print("Contained:", contained)
+                #print("Sum contained", bool(np.sum(contained)))
             #true_contained.reshape(len(tracks))
-            print("True contained shape:", true_contained.shape)
+            #print("True contained shape:", true_contained.shape)
 
 
         sel = np.zeros(len(tracks), dtype=self.sel_dtype)
+       #print("Event selection:", event_sel)
 
         if len(sel):
-            #print("Events passing selection:", str(passing_events)+"/32")
+            #print("Selection identified:", str(len(sel))+"/32")
             sel['sel'] = event_sel
+            #print("Selected:", sel['sel'])
             sel['event_id'] = event_ids
+            sel['proton'] = ((pid_muon_proton > -1.)& (pid_mip_proton > -1.))
+            sel['nhits_over_thresh'] = max_hit_charge
+            sel['pdg_id'] = np.zeros(1000)
             sel['muon_loglikelihood_mean'] = np.mean(muon_likelihood_mcs, axis=-1) * 0 + np.mean(muon_likelihood_dqdx, axis=-1)
             sel['proton_loglikelihood_mean'] = np.mean(proton_likelihood_mcs, axis=-1) * 0 + np.mean(proton_likelihood_dqdx, axis=-1)
             sel['mip_loglikelihood_mean'] = np.mean(mip_likelihood_mcs, axis=-1) * 0 + np.mean(mip_likelihood_dqdx, axis=-1)
@@ -1141,25 +1172,25 @@ class ProtonSelection(H5FlowStage):
         #    hit_profile['rr'][~hits['id'].mask] = hit_prof_rr[~hits['id'].mask]
 
 
-            # reserve data space
-            sel_slice = self.data_manager.reserve_data(
-                f'{self.path}/{self.sel_dset_name}', source_slice)
-            #event_tracks_slice = self.data_manager.reserve_data(
-            #    f'{self.path}/{self.event_tracks_dset_name}', source_slice)
-            #event_hits_slice = self.data_manager.reserve_data(
-            #    f'{self.path}/{self.hit_profile_dset_name}', int((~hits['id'].mask).sum()))
-            if self.is_mc:
-                sel_truth_slice = self.data_manager.reserve_data(
-                    f'{self.path}/{self.sel_truth_dset_name}',
-                    source_slice)
+        # reserve data space
+        sel_slice = self.data_manager.reserve_data(
+            f'{self.path}/{self.sel_dset_name}', source_slice)
+        #event_tracks_slice = self.data_manager.reserve_data(
+        #    f'{self.path}/{self.event_tracks_dset_name}', source_slice)
+        #event_hits_slice = self.data_manager.reserve_data(
+        #    f'{self.path}/{self.hit_profile_dset_name}', int((~hits['id'].mask).sum()))
+        if self.is_mc:
+            sel_truth_slice = self.data_manager.reserve_data(
+                f'{self.path}/{self.sel_truth_dset_name}',
+                source_slice)
 
             # write
-            self.data_manager.write_data(f'{self.path}/{self.sel_dset_name}',
+        self.data_manager.write_data(f'{self.path}/{self.sel_dset_name}',
                                          sel_slice, sel)
-            if self.is_mc:
-                self.data_manager.write_data(
-                    f'{self.path}/{self.sel_truth_dset_name}',
-                    sel_truth_slice, event_true_sel)
+        if self.is_mc:
+            self.data_manager.write_data(
+                f'{self.path}/{self.sel_truth_dset_name}',
+                sel_truth_slice, event_true_sel)
             #self.data_manager.write_data(f'{self.path}/{self.event_tracks_dset_name}',
             #                             event_tracks_slice, event_tracks)
             #self.data_manager.write_data(f'{self.path}/{self.hit_profile_dset_name}',

@@ -5,6 +5,7 @@
 ##              creation.                                                     ##
 ##                                                                            ##
 ################################################################################
+import json 
 
 ####--------------------------- HDF5 FILE PARSING --------------------------####
 
@@ -32,3 +33,25 @@ def get_charge_datasets(data_h5):
     hits_data = data_h5['charge']['hits']['data']
 
     return events_data, hits_data
+
+####----------------------- OUTPUT DICTIONARY TO JSON ----------------------####
+
+def tuple_key_to_string(d):
+    out={}
+    for key in d.keys():
+        string_key=""
+        max_length=len(key)
+        for i in range(max_length):
+            if i<len(key)-1: string_key+=str(key[i])+"-"
+            else: string_key+=str(key[i])
+        out[string_key]=d[key]
+    return out                    
+            
+
+def save_dict_to_json(d, name, if_tuple):
+    with open(name+".json", "w") as outfile:
+        if if_tuple==True:
+            updated_d = tuple_key_to_string(d)
+            json.dump(updated_d, outfile, indent=4)
+        else:
+            json.dump(d, outfile, indent=4)    

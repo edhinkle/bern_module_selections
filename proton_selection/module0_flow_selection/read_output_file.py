@@ -11,6 +11,7 @@ import matplotlib.pyplot as plt
 
 data_file = 'test_out.h5'#'test_two_tracks_allowed_pid.h5'#'test_out.h5'
 data_h5 = h5py.File(data_file,'r')
+mc = False
 
 print('FILE KEYS:', list(data_h5.keys()),'\n')
 print('HIGH PURITY SEL KEYS:',list(data_h5['high_purity_sel'].keys()),'\n')
@@ -23,6 +24,7 @@ pid_muon_mask = (data_h5['high_purity_sel']['protons']['sel_reco']['data']['pid_
 pid_mip_mask = (data_h5['high_purity_sel']['protons']['sel_reco']['data']['pid_mip_proton'] < 0.)
 print('Number of selected events:',len(data_h5['high_purity_sel']['protons']['sel_reco']['data'][sel_mask]),'\n')
 print('Selected Events:',data_h5['high_purity_sel']['protons']['sel_reco']['data'][sel_mask]['event_id'],'\n')
+print('Number of hits over threshold in selected events:',data_h5['high_purity_sel']['protons']['sel_reco']['data'][sel_mask]['nhits_over_thresh'],'\n')
 print('Number of tracks in Selected Events:',data_h5['high_purity_sel']['protons']['sel_reco']['data'][sel_mask]['ntracks'],'\n')
 print('Proton Log Likelihood Means:',data_h5['high_purity_sel']['protons']['sel_reco']['data'][sel_mask]['proton_loglikelihood_mean'],'\n')
 print('Muon Log Likelihood Means:',data_h5['high_purity_sel']['protons']['sel_reco']['data'][sel_mask]['muon_loglikelihood_mean'],'\n')
@@ -32,9 +34,11 @@ print('PID score muon proton:',data_h5['high_purity_sel']['protons']['sel_reco']
 print('PID score mip proton:',data_h5['high_purity_sel']['protons']['sel_reco']['data'][event_mask]['pid_mip_proton'],'\n')
 print('PID muon proton', data_h5['high_purity_sel']['protons']['sel_reco']['data'][pid_muon_mask]['pid_muon_proton'],'\n')
 print('PID mip proton', data_h5['high_purity_sel']['protons']['sel_reco']['data'][pid_mip_mask]['pid_mip_proton'],'\n')
-if len(data_h5['high_purity_sel']['protons']['sel_truth']['data']['proton']):
+if mc:
     proton_mask = (data_h5['high_purity_sel']['protons']['sel_truth']['data']['proton'] == True)
-    print('Proton events:', data_h5['high_purity_sel']['protons']['sel_truth']['data'][proton_mask]['event_id'])
+    sel_truth_mask = (data_h5['high_purity_sel']['protons']['sel_truth']['data']['sel'] == True)
+    print('Proton events:', data_h5['high_purity_sel']['protons']['sel_truth']['data'][sel_mask]['proton'])
+    print('True selection events:', data_h5['high_purity_sel']['protons']['sel_truth']['data'][sel_truth_mask]['event_id'])
     for event in data_h5['high_purity_sel']['protons']['sel_reco']['data'][sel_mask]['event_id']:
         event_sel_mask = data_h5['high_purity_sel']['protons']['sel_truth']['data']['event_id'] == event
         zero_mask = data_h5['high_purity_sel']['protons']['sel_truth']['data'][event_sel_mask]['pdg_id'] != 0.

@@ -14,9 +14,9 @@
 #   source run_proton_selection.sh <example file>
 # 
 # file path in NERSC: /global/cfs/cdirs/dune/www/data/Module1/reco/charge_only/events_2022_02_08_08_54_32_CET.gz.h5
-
+INPUT_DIR=/global/cfs/cdirs/dune/www/data/Module1/reco/charge_only
 INPUT_FILE=$1
-OUTPUT_FILE=/global/cfs/cdirs/dune/users/ehinkle/nd_prototypes_ana/bern_module_selections/proton_selection/module0_flow_selection/test_out.h5
+OUTPUT_FILE=/global/cfs/cdirs/dune/users/ehinkle/nd_prototypes_ana/bern_module_selections/proton_selection/module0_flow_selection/selected_data/${INPUT_FILE}.PROTONS.h5
 
 # for running on a login node
 H5FLOW_CMD='h5flow'
@@ -35,7 +35,7 @@ if [ -e $OUTPUT_FILE ]; then
     rm -i $OUTPUT_FILE
 fi
 
-$H5FLOW_CMD --nompi -c $WORKFLOW1 -i $INPUT_FILE -o $OUTPUT_FILE 
+$H5FLOW_CMD --nompi -c $WORKFLOW1 -i $INPUT_DIR/$INPUT_FILE.h5 -o $OUTPUT_FILE 
 
 echo "Done!"
 echo "Output can be found at $OUTPUT_FILE"
